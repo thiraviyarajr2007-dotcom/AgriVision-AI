@@ -13,6 +13,11 @@ import com.example.data.remote.ContentPayload
 import com.example.data.remote.GenerateContentReq
 import com.example.data.remote.GenerationConfigPayload
 import com.example.data.remote.InlineDataPayload
+import com.example.data.remote.OpenRouterChatReq
+import com.example.data.remote.OpenRouterClient
+import com.example.data.remote.OpenRouterContentPart
+import com.example.data.remote.OpenRouterImageUrl
+import com.example.data.remote.OpenRouterMessage
 import com.example.data.remote.PartPayload
 import com.example.data.remote.RetrofitClient
 import com.squareup.moshi.Moshi
@@ -144,176 +149,260 @@ class CropRepository(
         }
     }
 
+    companion object {
+        private const val PRIMARY_OPENROUTER_KEY = "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"
+    }
+
     suspend fun diagnoseCropImage(
         bitmap: Bitmap?,
         presetId: String?,
         language: String
     ): Result<CropDiagnosisResult> = withContext(Dispatchers.IO) {
-        try {
-            // Check preset sample if image is not provided or if presetId is set
-            if (presetId != null && bitmap == null) {
-                val sample = CropPresetSamples.list.find { it.id == presetId }
-                if (sample != null) {
-                    return@withContext Result.success(sample.defaultResult.copy(language = language))
-                }
+        // Check preset sample if image is not provided or if presetId is set
+        if (presetId != null && bitmap == null) {
+            val sample = CropPresetSamples.list.find { it.id == presetId }
+            if (sample != null) {
+                return@withContext Result.success(sample.defaultResult.copy(language = language))
             }
+        }
 
-            val apiKey = BuildConfig.GEMINI_API_KEY.orEmpty()
-            if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-                // If API Key is placeholder, return realistic diagnosis result from sample
-                val fallbackSample = CropPresetSamples.list.first()
-                return@withContext Result.success(fallbackSample.defaultResult.copy(language = language))
-            }
-
-            val parts = mutableListOf<PartPayload>()
+        // System instructions & prompt
+        val systemInstructionText = """
+            You are an expert AI Agricultural Specialist & Plant Pathologist.
+            Analyze the provided crop image and user request.
+            Return ONLY a valid JSON object matching the following structure without extra markdown or text.
+            CRITICAL LANGUAGE REQUIREMENT: All string values in the JSON output MUST be strictly in $language language. Do NOT use English text unless $language is 'English'. Translate all crop names, symptoms, disease descriptions, remedies, NPK dosages, and warnings into $language.
             
-            // System instructions & prompt
-            val systemInstructionText = """
-                You are an expert AI Agricultural Specialist & Plant Pathologist.
-                Analyze the provided crop image and user request.
-                Return ONLY a valid JSON object matching the following structure without extra markdown or text.
-                Target Language for all text values in the JSON: $language.
-                
-                Expected JSON keys:
-                {
-                  "cropSpecies": "Crop common and scientific name",
-                  "isHealthy": false,
-                  "diseaseName": "Disease Name or Healthy Condition",
-                  "confidencePercentage": 95,
-                  "diseaseStage": "Stage of disease/crop",
-                  "severity": "Low" or "Medium" or "High",
-                  "cause": "Detailed pathogen cause",
-                  "symptoms": ["Symptom 1", "Symptom 2"],
-                  "spreadRisk": "Risk level and vector conditions",
-                  "organicTreatments": {
-                    "homemadeRemedies": ["Remedy 1", "Remedy 2"],
-                    "bioFertilizers": ["Bio-fertilizer 1"],
-                    "neemOil": "Neem oil usage instructions",
-                    "compost": "Compost recommendations",
-                    "vermicompost": "Vermicompost dosage",
-                    "cowDung": "Cow dung slurry / Jeevamrutham info",
-                    "panchagavya": "Panchagavya dosage & timing",
-                    "trichoderma": "Trichoderma viride application",
-                    "bioPesticides": ["Bio pesticide 1"]
-                  },
-                  "chemicalTreatments": {
-                    "items": [
-                      {
-                        "category": "Fungicide / Insecticide",
-                        "name": "Chemical name",
-                        "dosage": "Exact dosage per liter and per acre",
-                        "sprayInterval": "Spray interval",
-                        "safetyPrecautions": "Safety gear and warning instructions"
-                      }
-                    ],
-                    "safetyWarning": "Mandatory safety warning"
-                  },
-                  "fertilizerPlan": {
-                    "nitrogenKgPerAcre": 30.0,
-                    "phosphorusKgPerAcre": 20.0,
-                    "potassiumKgPerAcre": 25.0,
-                    "micronutrients": ["Zinc", "Boron"],
-                    "stageSchedule": [
-                      {"stageName": "Basal", "timingDays": "0 DAP", "fertilizerRecommendation": "Detail"},
-                      {"stageName": "Tillering", "timingDays": "30 DAP", "fertilizerRecommendation": "Detail"}
-                    ]
-                  },
-                  "irrigation": {
-                    "waterAmountPerAcre": "Water liters/day",
-                    "frequencyDays": "Frequency",
-                    "overwateringWarnings": "Warnings against waterlogging"
-                  },
-                  "growthMonitoring": {
-                    "currentStage": "Current growth stage",
-                    "nextExpectedStage": "Next stage",
-                    "growthScore": 85,
-                    "plantHealthScore": 75
-                  },
-                  "yieldPrediction": {
-                    "expectedHarvestDate": "Date or timeframe",
-                    "expectedProductionQuintalsPerAcre": "Production amount",
-                    "estimatedMarketValue": "Market value estimate"
-                  },
-                  "preventionTips": ["Tip 1", "Tip 2"],
-                  "weatherAdvice": "Advice based on humidity and rain",
-                  "pestPrevention": ["Pest tip 1"],
-                  "soilImprovement": ["Soil tip 1"],
-                  "cropRotation": ["Rotation tip 1"],
-                  "costOptions": {
-                    "lowCostOrganicRemedies": ["Low-cost option 1"],
-                    "premiumTreatmentOptions": ["Premium option 1"]
-                  },
-                  "environmentalPriorityNote": "Eco priority note",
-                  "language": "$language"
-                }
-            """.trimIndent()
+            Expected JSON keys:
+            {
+              "cropSpecies": "Crop common and scientific name in $language",
+              "isHealthy": false,
+              "diseaseName": "Disease Name in $language",
+              "confidencePercentage": 95,
+              "diseaseStage": "Stage of disease/crop in $language",
+              "severity": "Low" or "Medium" or "High",
+              "cause": "Detailed pathogen cause in $language",
+              "symptoms": ["Symptom 1 in $language", "Symptom 2 in $language"],
+              "spreadRisk": "Risk level and vector conditions in $language",
+              "organicTreatments": {
+                "homemadeRemedies": ["Remedy 1 in $language", "Remedy 2 in $language"],
+                "bioFertilizers": ["Bio-fertilizer 1 in $language"],
+                "neemOil": "Neem oil usage instructions in $language",
+                "compost": "Compost recommendations in $language",
+                "vermicompost": "Vermicompost dosage in $language",
+                "cowDung": "Cow dung slurry / Jeevamrutham info in $language",
+                "panchagavya": "Panchagavya dosage & timing in $language",
+                "trichoderma": "Trichoderma viride application in $language",
+                "bioPesticides": ["Bio pesticide 1 in $language"]
+              },
+              "chemicalTreatments": {
+                "items": [
+                  {
+                    "category": "Fungicide / Insecticide in $language",
+                    "name": "Chemical name",
+                    "dosage": "Exact dosage per liter and per acre in $language",
+                    "sprayInterval": "Spray interval in $language",
+                    "safetyPrecautions": "Safety gear and warning instructions in $language"
+                  }
+                ],
+                "safetyWarning": "Mandatory safety warning in $language"
+              },
+              "fertilizerPlan": {
+                "nitrogenKgPerAcre": 30.0,
+                "phosphorusKgPerAcre": 20.0,
+                "potassiumKgPerAcre": 25.0,
+                "micronutrients": ["Zinc", "Boron"],
+                "stageSchedule": [
+                  {"stageName": "Basal", "timingDays": "0 DAP", "fertilizerRecommendation": "Detail in $language"},
+                  {"stageName": "Tillering", "timingDays": "30 DAP", "fertilizerRecommendation": "Detail in $language"}
+                ]
+              },
+              "irrigation": {
+                "waterAmountPerAcre": "Water liters/day in $language",
+                "frequencyDays": "Frequency in $language",
+                "overwateringWarnings": "Warnings against waterlogging in $language"
+              },
+              "growthMonitoring": {
+                "currentStage": "Current growth stage in $language",
+                "nextExpectedStage": "Next stage in $language",
+                "growthScore": 85,
+                "plantHealthScore": 75
+              },
+              "yieldPrediction": {
+                "expectedHarvestDate": "Date or timeframe in $language",
+                "expectedProductionQuintalsPerAcre": "Production amount in $language",
+                "estimatedMarketValue": "Market value estimate in $language"
+              },
+              "preventionTips": ["Tip 1 in $language", "Tip 2 in $language"],
+              "weatherAdvice": "Advice based on humidity and rain in $language",
+              "pestPrevention": ["Pest tip 1 in $language"],
+              "soilImprovement": ["Soil tip 1 in $language"],
+              "cropRotation": ["Rotation tip 1 in $language"],
+              "costOptions": {
+                "lowCostOrganicRemedies": ["Low-cost option in $language"],
+                "premiumTreatmentOptions": ["Premium option in $language"]
+              },
+              "environmentalPriorityNote": "Eco priority note in $language",
+              "language": "$language"
+            }
+        """.trimIndent()
 
-            parts.add(PartPayload(text = "Please analyze this crop leaf image for disease diagnosis and precision farming advice in $language language."))
+        // --- 1. TRY PRIMARY API (OpenRouter) ---
+        try {
+            Log.d("CropRepository", "Attempting Primary API (OpenRouter)...")
+            val userParts = mutableListOf<OpenRouterContentPart>()
+            userParts.add(
+                OpenRouterContentPart(
+                    type = "text",
+                    text = "Please analyze this crop leaf image for disease diagnosis and precision farming advice in $language language."
+                )
+            )
 
             if (bitmap != null) {
                 val base64Image = bitmap.toBase64()
-                parts.add(PartPayload(inlineData = InlineDataPayload(mimeType = "image/jpeg", data = base64Image)))
+                userParts.add(
+                    OpenRouterContentPart(
+                        type = "image_url",
+                        imageUrl = OpenRouterImageUrl(url = "data:image/jpeg;base64,$base64Image")
+                    )
+                )
             }
 
-            val request = GenerateContentReq(
-                contents = listOf(ContentPayload(parts = parts)),
-                generationConfig = GenerationConfigPayload(temperature = 0.2f),
-                systemInstruction = ContentPayload(parts = listOf(PartPayload(text = systemInstructionText)))
+            val messages = listOf(
+                OpenRouterMessage(
+                    role = "system",
+                    content = listOf(OpenRouterContentPart(type = "text", text = systemInstructionText))
+                ),
+                OpenRouterMessage(role = "user", content = userParts)
             )
 
-            val response = RetrofitClient.service.generateContent(apiKey, request)
-            val rawText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            val openRouterReq = OpenRouterChatReq(
+                model = "google/gemini-2.5-flash",
+                messages = messages,
+                temperature = 0.2f
+            )
 
-            if (rawText.isNullOrBlank()) {
-                val fallbackSample = CropPresetSamples.list.first()
-                return@withContext Result.success(fallbackSample.defaultResult.copy(language = language))
+            val openRouterResponse = OpenRouterClient.service.chatCompletions(
+                authHeader = "Bearer $PRIMARY_OPENROUTER_KEY",
+                request = openRouterReq
+            )
+
+            val rawOpenRouterText = openRouterResponse.choices?.firstOrNull()?.message?.content
+            if (!rawOpenRouterText.isNullOrBlank()) {
+                val cleanedJson = cleanJsonString(rawOpenRouterText)
+                val parsed = jsonAdapter.fromJson(cleanedJson)
+                if (parsed != null) {
+                    Log.d("CropRepository", "Primary API (OpenRouter) succeeded!")
+                    return@withContext Result.success(parsed)
+                }
             }
-
-            // Clean json from backticks if present
-            val cleanedJson = cleanJsonString(rawText)
-            val parsedResult = jsonAdapter.fromJson(cleanedJson)
-
-            if (parsedResult != null) {
-                Result.success(parsedResult)
-            } else {
-                val fallbackSample = CropPresetSamples.list.first()
-                Result.success(fallbackSample.defaultResult.copy(language = language))
-            }
-
         } catch (e: Exception) {
-            Log.e("CropRepository", "Error diagnosing image: ${e.message}", e)
-            val fallbackSample = CropPresetSamples.list.first()
-            Result.success(fallbackSample.defaultResult.copy(language = language))
+            Log.w("CropRepository", "Primary API (OpenRouter) failed: ${e.message}. Falling back to Gemini API...", e)
         }
+
+        // --- 2. TRY FALLBACK API (Gemini) ---
+        try {
+            Log.d("CropRepository", "Attempting Fallback API (Gemini)...")
+            val apiKey = BuildConfig.GEMINI_API_KEY.orEmpty()
+            if (apiKey.isNotBlank() && apiKey != "MY_GEMINI_API_KEY") {
+                val parts = mutableListOf<PartPayload>()
+                parts.add(PartPayload(text = "Please analyze this crop leaf image for disease diagnosis and precision farming advice in $language language."))
+
+                if (bitmap != null) {
+                    val base64Image = bitmap.toBase64()
+                    parts.add(PartPayload(inlineData = InlineDataPayload(mimeType = "image/jpeg", data = base64Image)))
+                }
+
+                val request = GenerateContentReq(
+                    contents = listOf(ContentPayload(parts = parts)),
+                    generationConfig = GenerationConfigPayload(temperature = 0.2f),
+                    systemInstruction = ContentPayload(parts = listOf(PartPayload(text = systemInstructionText)))
+                )
+
+                val response = RetrofitClient.service.generateContent(apiKey, request)
+                val rawText = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+
+                if (!rawText.isNullOrBlank()) {
+                    val cleanedJson = cleanJsonString(rawText)
+                    val parsedResult = jsonAdapter.fromJson(cleanedJson)
+                    if (parsedResult != null) {
+                        Log.d("CropRepository", "Fallback API (Gemini) succeeded!")
+                        return@withContext Result.success(parsedResult)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CropRepository", "Fallback API (Gemini) failed: ${e.message}", e)
+        }
+
+        // --- 3. LOCAL SAMPLE FALLBACK ---
+        val fallbackSample = CropPresetSamples.list.first()
+        Result.success(fallbackSample.defaultResult.copy(language = language))
     }
 
     suspend fun askAgriChatbot(
         userQuestion: String,
         language: String
     ): String = withContext(Dispatchers.IO) {
+        val systemInstruction = """
+            You are AgriCare AI - an expert Agriculture & Soil Science Specialist.
+            Respond clearly and helpfully to the farmer STRICTLY in $language language.
+            CRITICAL LANGUAGE MANDATE: The user has chosen $language. All answers, crop disease solutions, organic remedies, dosages, and soil advice MUST be written 100% in $language.
+            Do NOT reply in English or mix English text unless $language is 'English'.
+            Prioritize environmentally friendly, low-cost organic remedies first, followed by safe chemical recommendations if needed.
+        """.trimIndent()
+
+        // 1. Try Primary API (OpenRouter)
         try {
-            val apiKey = BuildConfig.GEMINI_API_KEY.orEmpty()
-            if (apiKey.isBlank() || apiKey == "MY_GEMINI_API_KEY") {
-                return@withContext getLocalSampleAnswer(userQuestion, language)
-            }
-
-            val systemInstruction = """
-                You are AgriCare AI - an expert Agriculture & Soil Science Specialist.
-                Respond clearly and helpfully to the farmer in $language language.
-                Prioritize environmentally friendly, low-cost organic remedies first, followed by safe chemical recommendations if needed.
-            """.trimIndent()
-
-            val request = GenerateContentReq(
-                contents = listOf(ContentPayload(parts = listOf(PartPayload(text = userQuestion)))),
-                systemInstruction = ContentPayload(parts = listOf(PartPayload(text = systemInstruction)))
+            Log.d("CropRepository", "Chatbot calling Primary API (OpenRouter)...")
+            val messages = listOf(
+                OpenRouterMessage(role = "system", content = listOf(OpenRouterContentPart(type = "text", text = systemInstruction))),
+                OpenRouterMessage(role = "user", content = listOf(OpenRouterContentPart(type = "text", text = userQuestion)))
             )
 
-            val response = RetrofitClient.service.generateContent(apiKey, request)
-            response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
-                ?: getLocalSampleAnswer(userQuestion, language)
+            val request = OpenRouterChatReq(
+                model = "google/gemini-2.5-flash",
+                messages = messages,
+                temperature = 0.3f
+            )
+
+            val resp = OpenRouterClient.service.chatCompletions(
+                authHeader = "Bearer $PRIMARY_OPENROUTER_KEY",
+                request = request
+            )
+
+            val content = resp.choices?.firstOrNull()?.message?.content
+            if (!content.isNullOrBlank()) {
+                Log.d("CropRepository", "Chatbot Primary API (OpenRouter) succeeded!")
+                return@withContext content
+            }
         } catch (e: Exception) {
-            getLocalSampleAnswer(userQuestion, language)
+            Log.w("CropRepository", "Chatbot Primary API (OpenRouter) failed: ${e.message}. Trying Fallback Gemini API...", e)
         }
+
+        // 2. Try Fallback API (Gemini)
+        try {
+            Log.d("CropRepository", "Chatbot calling Fallback API (Gemini)...")
+            val apiKey = BuildConfig.GEMINI_API_KEY.orEmpty()
+            if (apiKey.isNotBlank() && apiKey != "MY_GEMINI_API_KEY") {
+                val request = GenerateContentReq(
+                    contents = listOf(ContentPayload(parts = listOf(PartPayload(text = userQuestion)))),
+                    systemInstruction = ContentPayload(parts = listOf(PartPayload(text = systemInstruction)))
+                )
+
+                val response = RetrofitClient.service.generateContent(apiKey, request)
+                val text = response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                if (!text.isNullOrBlank()) {
+                    Log.d("CropRepository", "Chatbot Fallback API (Gemini) succeeded!")
+                    return@withContext text
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CropRepository", "Chatbot Fallback API (Gemini) failed: ${e.message}", e)
+        }
+
+        // 3. Local offline answer fallback
+        getLocalSampleAnswer(userQuestion, language)
     }
 
     private fun cleanJsonString(input: String): String {

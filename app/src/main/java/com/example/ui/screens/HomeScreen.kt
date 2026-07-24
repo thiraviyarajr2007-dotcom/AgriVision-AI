@@ -65,9 +65,20 @@ import com.example.util.Localization
 fun HomeScreen(viewModel: AgriViewModel) {
     val showSplash by viewModel.showSplashScreen.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+    val hasCompletedLanguageSetup by viewModel.hasCompletedLanguageSetup.collectAsState()
 
     if (showSplash) {
         SplashScreen(onContinue = { viewModel.dismissSplash() })
+        return
+    }
+
+    if (!hasCompletedLanguageSetup) {
+        LanguageSelectionScreen(
+            viewModel = viewModel,
+            onConfirmLanguage = {
+                // Handled in viewModel
+            }
+        )
         return
     }
 
