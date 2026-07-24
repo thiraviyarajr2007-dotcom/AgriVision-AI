@@ -1,0 +1,6 @@
+{
+  "name": "AgriVision AI",
+  "description": "AI Agriculture Expert for Crop Disease Diagnosis, Precision Farming & ML Yield Prediction",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
