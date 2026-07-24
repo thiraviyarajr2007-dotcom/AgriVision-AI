@@ -64,21 +64,10 @@ import com.example.util.Localization
 @Composable
 fun HomeScreen(viewModel: AgriViewModel) {
     val showSplash by viewModel.showSplashScreen.collectAsState()
-    val hasCompletedLanguageSetup by viewModel.hasCompletedLanguageSetup.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
 
     if (showSplash) {
         SplashScreen(onContinue = { viewModel.dismissSplash() })
-        return
-    }
-
-    if (!hasCompletedLanguageSetup) {
-        LanguageSelectionScreen(
-            viewModel = viewModel,
-            onConfirmLanguage = {
-                // Language setup complete
-            }
-        )
         return
     }
 
