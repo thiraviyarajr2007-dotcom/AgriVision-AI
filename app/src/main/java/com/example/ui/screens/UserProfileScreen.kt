@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Landscape
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
@@ -192,35 +196,169 @@ fun UserProfileScreen(
         }
 
         item {
+            val context = LocalContext.current
+            val autoLoc = viewModel.autoDetectedLocation.collectAsState().value
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text("Account & Preferences", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-
-                    OutlinedButton(
-                        onClick = { showLanguageDialog = true },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Language, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(Localization.getString("change_lang_btn", currentLanguage))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.MyLocation,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Auto Device Location Service",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (autoLoc != null) "Detected: ${autoLoc.fullLocationLabel} • ${autoLoc.detectedLanguage} Dialect" else "Auto GPS / State Detector Active",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
 
-                    Button(
-                        onClick = { viewModel.logoutUser() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .padding(12.dp)
                     ) {
-                        Icon(Icons.Default.Lock, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(Localization.getString("logout_btn", currentLanguage))
+                        Column {
+                            Text(
+                                text = "📍 Smart Location Service",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Automatically detects whether you are in Tamil Nadu or Karnataka to update UI labels, crop advisory, and Gemini AI context instantly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { viewModel.detectAndApplyDeviceLocation(context) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_auto_detect_location"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Detect Location (GPS)", fontSize = 11.sp)
+                        }
+                    }
+
+                    Text(
+                        text = "Simulate State / Dialect Context:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val isTN = userProfile.location.contains("Tamil Nadu", ignoreCase = true)
+                        val isKA = userProfile.location.contains("Karnataka", ignoreCase = true)
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (isTN) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { viewModel.simulateRegionToggle("Tamil Nadu") }
+                                .padding(vertical = 10.dp, horizontal = 10.dp)
+                                .testTag("btn_simulate_tn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🌾 Tamil Nadu Farmers",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isTN) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(
+                                    if (isKA) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                                .clickable { viewModel.simulateRegionToggle("Karnataka") }
+                                .padding(vertical = 10.dp, horizontal = 10.dp)
+                                .testTag("btn_simulate_ka"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "🌾 Karnataka Farmers",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isKA) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { showLanguageDialog = true },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_change_language_modal"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Localization.getString("change_lang_btn", currentLanguage), fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = { viewModel.logoutUser() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_logout"),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(Localization.getString("logout_btn", currentLanguage), fontSize = 11.sp)
+                        }
                     }
                 }
             }

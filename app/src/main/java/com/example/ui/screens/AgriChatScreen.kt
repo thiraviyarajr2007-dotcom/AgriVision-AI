@@ -50,6 +50,9 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.AgriViewModel
 import com.example.ui.ChatMessage
 
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.widthIn
+
 @Composable
 fun AgriChatScreen(
     viewModel: AgriViewModel,
@@ -80,6 +83,7 @@ fun AgriChatScreen(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .imePadding()
     ) {
         // Chat Header Banner
         Card(
@@ -225,7 +229,8 @@ fun ChatMessageBubble(msg: ChatMessage) {
     val isBot = msg.sender == "bot"
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isBot) Arrangement.Start else Arrangement.End
+        horizontalArrangement = if (isBot) Arrangement.Start else Arrangement.End,
+        verticalAlignment = Alignment.Top
     ) {
         if (isBot) {
             Box(
@@ -241,7 +246,7 @@ fun ChatMessageBubble(msg: ChatMessage) {
 
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.85f)
+                .widthIn(max = 280.dp)
                 .background(
                     if (isBot) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
                     shape = RoundedCornerShape(16.dp)

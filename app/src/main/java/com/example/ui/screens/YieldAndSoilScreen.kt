@@ -60,6 +60,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import com.example.data.local.SoilTestEntity
 import com.example.ui.AdvancedYieldPredictionResult
 import com.example.ui.AgriViewModel
@@ -381,6 +388,18 @@ fun YieldPredictionTabContent(viewModel: AgriViewModel) {
             }
         }
 
+        // Always render Growth Cycle Yield Projection Chart for visual clarity
+        item {
+            val histVal = histYieldText.toDoubleOrNull() ?: 24.0
+            val projVal = predictionResult?.predictedYieldPerAcre ?: (histVal * 1.15)
+            GrowthCycleYieldProjectionChart(
+                cropName = cropName,
+                soilType = soilType,
+                historicalBaseYield = histVal,
+                projectedSoilYield = projVal
+            )
+        }
+
         predictionResult?.let { res ->
             item {
                 Card(
@@ -453,6 +472,287 @@ fun YieldPredictionTabContent(viewModel: AgriViewModel) {
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GrowthCycleYieldProjectionChart(
+    cropName: String,
+    soilType: String,
+    historicalBaseYield: Double,
+    projectedSoilYield: Double,
+    modifier: Modifier = Modifier
+) {
+    var selectedStageIndex by remember { mutableIntStateOf(4) }
+
+    val stages = listOf(
+        "M1: Sowing",
+        "M2: Vegetative",
+        "M3: Flowering",
+        "M4: Grain Fill",
+        "M5: Harvest"
+    )
+
+    val histPoints = listOf(
+        historicalBaseYield * 0.15,
+        historicalBaseYield * 0.42,
+        historicalBaseYield * 0.70,
+        historicalBaseYield * 0.90,
+        historicalBaseYield
+    )
+
+    val projPoints = listOf(
+        projectedSoilYield * 0.18,
+        projectedSoilYield * 0.48,
+        projectedSoilYield * 0.76,
+        projectedSoilYield * 0.94,
+        projectedSoilYield
+    )
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("growth_cycle_yield_chart"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "📈 Growth Cycle Yield Projection Chart",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Historical Analysis vs. Soil-Optimized Trajectory ($cropName, $soilType)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            // Legend
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color(0xFF2E7D32), CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Soil-Optimized (${"%.1f".format(projectedSoilYield)} Q/Acre)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color(0xFF888888), CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Historical Baseline (${"%.1f".format(historicalBaseYield)} Q/Acre)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                }
+            }
+
+            // Canvas Chart
+            val primaryColor = Color(0xFF2E7D32)
+            val secondaryColor = Color(0xFF888888)
+            val gridLineColor = Color.LightGray.copy(alpha = 0.5f)
+
+            val maxVal = maxOf(histPoints.maxOrNull() ?: 1.0, projPoints.maxOrNull() ?: 1.0)
+            val maxY = if (maxVal > 0) maxVal * 1.18 else 10.0
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val width = size.width
+                    val height = size.height
+                    val spacing = if (stages.size > 1) width / (stages.size - 1) else width
+
+                    // Horizontal Grid Lines
+                    for (i in 0..3) {
+                        val y = height * i / 3f
+                        drawLine(
+                            color = gridLineColor,
+                            start = Offset(0f, y),
+                            end = Offset(width, y),
+                            strokeWidth = 1f
+                        )
+                    }
+
+                    // Historical Path
+                    val histPath = Path()
+                    histPoints.forEachIndexed { index, value ->
+                        val x = index * spacing
+                        val y = (height - (value / maxY * height)).toFloat()
+                        if (index == 0) histPath.moveTo(x, y) else histPath.lineTo(x, y)
+                    }
+                    drawPath(
+                        path = histPath,
+                        color = secondaryColor,
+                        style = Stroke(width = 4f, cap = StrokeCap.Round)
+                    )
+
+                    // Projected Path
+                    val projPath = Path()
+                    val projFillPath = Path()
+                    projFillPath.moveTo(0f, height)
+
+                    projPoints.forEachIndexed { index, value ->
+                        val x = index * spacing
+                        val y = (height - (value / maxY * height)).toFloat()
+                        if (index == 0) {
+                            projPath.moveTo(x, y)
+                            projFillPath.lineTo(x, y)
+                        } else {
+                            projPath.lineTo(x, y)
+                            projFillPath.lineTo(x, y)
+                        }
+                    }
+                    projFillPath.lineTo(width, height)
+                    projFillPath.close()
+
+                    // Gradient Fill under projected curve
+                    drawPath(
+                        path = projFillPath,
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                primaryColor.copy(alpha = 0.35f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+
+                    // Projected Line
+                    drawPath(
+                        path = projPath,
+                        color = primaryColor,
+                        style = Stroke(width = 6f, cap = StrokeCap.Round)
+                    )
+
+                    // Stage Points
+                    projPoints.forEachIndexed { index, value ->
+                        val x = index * spacing
+                        val yProj = (height - (value / maxY * height)).toFloat()
+                        val yHist = (height - (histPoints[index] / maxY * height)).toFloat()
+
+                        // Historical point dot
+                        drawCircle(color = secondaryColor, radius = 6f, center = Offset(x, yHist))
+
+                        // Projected point dot
+                        val isSelected = index == selectedStageIndex
+                        drawCircle(
+                            color = if (isSelected) Color.White else primaryColor,
+                            radius = if (isSelected) 10f else 8f,
+                            center = Offset(x, yProj)
+                        )
+                        drawCircle(
+                            color = primaryColor,
+                            radius = if (isSelected) 12f else 6f,
+                            style = Stroke(width = 3f),
+                            center = Offset(x, yProj)
+                        )
+                    }
+                }
+            }
+
+            // Interactive Stages Selector Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                stages.forEachIndexed { index, stageName ->
+                    val isSelected = index == selectedStageIndex
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable { selectedStageIndex = index }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .testTag("growth_stage_chip_$index")
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = stageName,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else Color.Gray,
+                                fontSize = 10.sp
+                            )
+                            Text(
+                                text = "${"%.1f".format(projPoints[index])} Q",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.DarkGray,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Milestone Detail Summary Card
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(12.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📌 Stage Milestone: ${stages[selectedStageIndex]}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "+${"%.1f".format(projPoints[selectedStageIndex] - histPoints[selectedStageIndex])} Q/Acre Gain",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    val gainPct = if (historicalBaseYield > 0) ((projectedSoilYield - historicalBaseYield) / historicalBaseYield * 100) else 0.0
+                    val stageAdvice = when (selectedStageIndex) {
+                        0 -> "Soil preparation & initial NPK basal dose boost root establishment in $soilType soil."
+                        1 -> "Active tillering phase: Apply secondary Nitrogen split & monitor leaf moisture retention."
+                        2 -> "Panicle & Flowering: High requirement for Micronutrients (Zinc/Boron) & pest prevention."
+                        3 -> "Grain Filling: Soil moisture maintenance is key; prevent fungal rust to secure high grain weight."
+                        else -> "Final Harvest: Maximum yield potential reached with estimated +${"%.1f".format(gainPct)}% soil response gain."
+                    }
+                    Text(
+                        text = stageAdvice,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.9f)
+                    )
                 }
             }
         }

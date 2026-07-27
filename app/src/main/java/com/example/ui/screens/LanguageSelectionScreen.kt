@@ -1,5 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,12 +25,15 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Eco
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -54,20 +62,21 @@ data class LanguageOption(
     val nativeName: String,
     val englishName: String,
     val subtext: String,
-    val regionBadge: String
+    val regionBadge: String,
+    val accentColor: Color
 )
 
 val availableLanguages = listOf(
-    LanguageOption("English", "English", "English", "Precision Farming & AI Crop Doctor", "Default"),
-    LanguageOption("Tamil", "தமிழ்", "Tamil", "துல்லிய விவசாயம் & பயிர் மருத்துவர்", "தமிழ்நாடு"),
-    LanguageOption("Hindi", "हिंदी", "Hindi", "सटीक कृषि और फसल डॉक्टर", "भारत"),
-    LanguageOption("Telugu", "తెలుగు", "Telugu", "ఖచ్చితమైన వ్యవసాయం & పంట డాక్టర్", "ఆంధ్ర / తెలంగాణ"),
-    LanguageOption("Malayalam", "മലയാളം", "Malayalam", "കൃത്യതാ കൃഷിയും വിള ഡോക്ടറും", "കേരളം"),
-    LanguageOption("Marathi", "मराठी", "Marathi", "अचूक शेती आणि पीक डॉक्टर", "महाराष्ट्र"),
-    LanguageOption("Kannada", "ಕನ್ನಡ", "Kannada", "ನಿಖರ ಕೃಷಿ ಮತ್ತು ಬೆಳೆ ವೈದ್ಯ", "ಕರ್ನಾಟಕ"),
-    LanguageOption("Gujarati", "ગુજરાતી", "Gujarati", "ચોક્કસ ખેતી અને પાક ડોક્ટર", "ગુજરાત"),
-    LanguageOption("Punjabi", "ਪੰਜਾਬੀ", "Punjabi", "ਸਟੀਕ ਖੇਤੀਬਾੜੀ ਅਤੇ ਫਸਲ ਡਾਕਟਰ", "ਪੰਜਾਬ"),
-    LanguageOption("Bengali", "বাংলা", "Bengali", "সঠিক কৃষি ও ফসল চিকিৎসক", "পশ্চিমবঙ্গ")
+    LanguageOption("English", "English", "English", "Precision Farming & AI Crop Doctor", "Default", Color(0xFF1E88E5)),
+    LanguageOption("Tamil", "தமிழ்", "Tamil", "துல்லிய விவசாயம் & பயிர் மருத்துவர்", "தமிழ்நாடு", Color(0xFFD81B60)),
+    LanguageOption("Hindi", "हिंदी", "Hindi", "सटीक कृषि और फसल डॉक्टर", "भारत", Color(0xFFFB8C00)),
+    LanguageOption("Telugu", "తెలుగు", "Telugu", "ఖచ్చితమైన వ్యవసాయం & పంట డాక్టర్", "ఆంధ్ర / తెలంగాణ", Color(0xFF43A047)),
+    LanguageOption("Malayalam", "മലയാളം", "Malayalam", "കൃത്യതാ കൃഷിയും വിള ഡോക്ടറും", "കേരളം", Color(0xFF00ACC1)),
+    LanguageOption("Marathi", "मराठी", "Marathi", "अचूक शेती आणि पीक डॉक्टर", "महाराष्ट्र", Color(0xFF8E24AA)),
+    LanguageOption("Kannada", "ಕನ್ನಡ", "Kannada", "ನಿಖರ ಕೃಷಿ ಮತ್ತು ಬೆಳೆ ವೈದ್ಯ", "ಕರ್ನಾಟಕ", Color(0xFFFDD835)),
+    LanguageOption("Gujarati", "ગુજરાતી", "Gujarati", "ચોક્કસ ખેતી અને પાક ડોક્ટર", "ગુજરાત", Color(0xFFE64A19)),
+    LanguageOption("Punjabi", "ਪੰਜਾਬੀ", "Punjabi", "ਸਟੀਕ ਖੇਤੀਬਾੜੀ ਅਤੇ ਫਸਲ ਡਾਕਟਰ", "ਪੰਜਾਬ", Color(0xFF3949AB)),
+    LanguageOption("Bengali", "বাংলা", "Bengali", "সঠিক কৃষি ও ফসল চিকিৎসক", "পশ্চিমবঙ্গ", Color(0xFF00897B))
 )
 
 @Composable
@@ -76,6 +85,7 @@ fun LanguageSelectionScreen(
     onConfirmLanguage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var selectedLangCode by remember { mutableStateOf("English") }
 
     Surface(
@@ -133,7 +143,7 @@ fun LanguageSelectionScreen(
                 modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
             )
 
-            // Language Cards Grid
+            // Language Cards Grid - Native Script prominent
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -145,25 +155,34 @@ fun LanguageSelectionScreen(
                 items(availableLanguages) { option ->
                     val isSelected = selectedLangCode.equals(option.code, ignoreCase = true)
 
+                    val animatedBorderColor by animateColorAsState(
+                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.5f),
+                        animationSpec = tween(durationMillis = 300),
+                        label = "borderColor"
+                    )
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(118.dp)
+                            .height(132.dp)
                             .clickable {
                                 selectedLangCode = option.code
                                 viewModel.selectLanguage(option.code)
                             }
                             .testTag("lang_option_${option.code.lowercase()}"),
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = if (isSelected)
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
                             else
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                MaterialTheme.colorScheme.surface
                         ),
                         border = androidx.compose.foundation.BorderStroke(
-                            width = if (isSelected) 2.dp else 1.dp,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.5f)
+                            width = if (isSelected) 2.5.dp else 1.dp,
+                            color = animatedBorderColor
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = if (isSelected) 4.dp else 1.dp
                         )
                     ) {
                         Box(modifier = Modifier.fillMaxSize().padding(12.dp)) {
@@ -171,28 +190,61 @@ fun LanguageSelectionScreen(
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.Top
                                 ) {
-                                    Text(
-                                        text = option.nativeName,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                    )
+                                    // Regional Accent Tag
+                                    Box(
+                                        modifier = Modifier
+                                            .background(
+                                                option.accentColor.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.Place,
+                                                contentDescription = null,
+                                                tint = option.accentColor,
+                                                modifier = Modifier.size(10.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = option.regionBadge,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = option.accentColor
+                                            )
+                                        }
+                                    }
 
+                                    // Checkmark
                                     if (isSelected) {
                                         Icon(
                                             imageVector = Icons.Default.CheckCircle,
                                             contentDescription = "Selected",
                                             tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                // Native script as BIGGEST text
+                                Text(
+                                    text = option.nativeName,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 20.sp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+
                                 Text(
                                     text = option.englishName,
-                                    style = MaterialTheme.typography.labelSmall,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color.Gray
                                 )
 
@@ -201,9 +253,9 @@ fun LanguageSelectionScreen(
                                 Text(
                                     text = option.subtext,
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 10.sp,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    maxLines = 2
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -211,21 +263,52 @@ fun LanguageSelectionScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Confirm Button
+            OutlinedButton(
+                onClick = {
+                    viewModel.detectAndApplyDeviceLocation(context)
+                    val loc = viewModel.autoDetectedLocation.value
+                    if (loc != null) {
+                        selectedLangCode = loc.detectedLanguage
+                        viewModel.completeLanguageSetup(loc.detectedLanguage)
+                        onConfirmLanguage()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .testTag("btn_auto_detect_lang_screen"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "📍 Auto-Detect State & Dialect (Tamil Nadu / Karnataka)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Persistent Continue Button (Disabled until language is selected)
             Button(
                 onClick = {
-                    viewModel.completeLanguageSetup(selectedLangCode)
-                    onConfirmLanguage()
+                    if (selectedLangCode.isNotBlank()) {
+                        viewModel.completeLanguageSetup(selectedLangCode)
+                        onConfirmLanguage()
+                    }
                 },
+                enabled = selectedLangCode.isNotBlank(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp)
                     .testTag("btn_confirm_language"),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    disabledContainerColor = Color.LightGray.copy(alpha = 0.6f)
                 )
             ) {
                 Row(
@@ -239,7 +322,7 @@ fun LanguageSelectionScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Continue with ${selectedLangCode} ->",
+                        text = if (selectedLangCode.isNotBlank()) "Continue with $selectedLangCode ->" else "Select a Language to Continue",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )

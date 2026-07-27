@@ -45,13 +45,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -60,15 +63,32 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.AgriViewModel
 import com.example.util.Localization
 
+import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.SignalCellularConnectedNoInternet4Bar
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.IconButton
+import com.example.ui.components.MoreDestinationsSheet
+import com.example.ui.components.OfflineSyncIndicator
+import com.example.ui.components.VoiceAssistanceModal
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(viewModel: AgriViewModel) {
     val showSplash by viewModel.showSplashScreen.collectAsState()
+    val hasCompletedOnboarding by viewModel.hasCompletedOnboarding.collectAsState()
     val isLoggedIn by viewModel.isLoggedIn.collectAsState()
     val hasCompletedLanguageSetup by viewModel.hasCompletedLanguageSetup.collectAsState()
+    val isVoiceModalOpen by viewModel.isVoiceModalOpen.collectAsState()
+    val isOfflineMode by viewModel.isOfflineMode.collectAsState()
 
     if (showSplash) {
         SplashScreen(onContinue = { viewModel.dismissSplash() })
+        return
+    }
+
+    if (!hasCompletedOnboarding) {
+        OnboardingScreen(onFinishOnboarding = { viewModel.completeOnboarding() })
         return
     }
 
@@ -87,7 +107,13 @@ fun HomeScreen(viewModel: AgriViewModel) {
         return
     }
 
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        viewModel.detectAndApplyDeviceLocation(context)
+    }
+
     var selectedTab by remember { mutableIntStateOf(0) }
+    var showMoreSheet by remember { mutableStateOf(false) }
     val currentLanguage by viewModel.selectedLanguage.collectAsState()
 
     val languages = listOf(
@@ -103,6 +129,24 @@ fun HomeScreen(viewModel: AgriViewModel) {
         "Bengali" to "বাংলা"
     )
 
+    if (showMoreSheet) {
+        MoreDestinationsSheet(
+            onDismiss = { showMoreSheet = false },
+            onSelectDestination = { index ->
+                selectedTab = index
+            },
+            currentLanguage = currentLanguage
+        )
+    }
+
+    if (isVoiceModalOpen) {
+        VoiceAssistanceModal(
+            viewModel = viewModel,
+            onNavigateTab = { index -> selectedTab = index },
+            onDismiss = { viewModel.closeVoiceAssistant() }
+        )
+    }
+
     Scaffold(
         topBar = {
             Column {
@@ -117,7 +161,7 @@ fun HomeScreen(viewModel: AgriViewModel) {
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Eco,
-                                    contentDescription = null,
+                                    contentDescription = "AgriCare App Logo",
                                     tint = MaterialTheme.colorScheme.onPrimary,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -138,129 +182,100 @@ fun HomeScreen(viewModel: AgriViewModel) {
                             }
                         }
                     },
+                    actions = {
+                        // Voice Assistant Mic Button
+                        IconButton(
+                            onClick = { viewModel.openVoiceAssistant() },
+                            modifier = Modifier.testTag("btn_voice_assistant")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Mic,
+                                    contentDescription = "Voice Assistant Mic",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+
+                        // Offline Simulation Toggle
+                        IconButton(
+                            onClick = { viewModel.toggleOfflineSimulation(!isOfflineMode) },
+                            modifier = Modifier.testTag("btn_toggle_offline")
+                        ) {
+                            Icon(
+                                imageVector = if (isOfflineMode) Icons.Default.SignalCellularConnectedNoInternet4Bar else Icons.Default.Wifi,
+                                contentDescription = "Toggle Network Status",
+                                tint = if (isOfflineMode) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
 
-                // Language Selector Header Strip
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    item {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 4.dp)) {
-                            Icon(Icons.Default.Language, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Lang:", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    items(languages) { (code, displayName) ->
-                        val isSelected = currentLanguage.equals(code, true) || currentLanguage.equals(displayName, true)
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
-                                    shape = RoundedCornerShape(14.dp)
-                                )
-                                .clickable { viewModel.selectLanguage(code) }
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = displayName,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
+                // Persistent Offline / Sync Indicator
+                OfflineSyncIndicator(isOffline = isOfflineMode, currentLanguage = currentLanguage)
             }
         },
         bottomBar = {
             NavigationBar(
-                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
                 containerColor = MaterialTheme.colorScheme.surface
             ) {
+                // Tab 0: Home
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-                    label = { Text(Localization.getString("nav_home", currentLanguage), fontSize = 10.sp) },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Home Tab") },
+                    label = { Text(Localization.getString("nav_home", currentLanguage), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                     modifier = Modifier.testTag("nav_tab_home"),
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
 
+                // Tab 1: Scan / Diagnosis
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan") },
-                    label = { Text(Localization.getString("nav_scan", currentLanguage), fontSize = 10.sp) },
+                    icon = { Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan Crop Leaf Tab") },
+                    label = { Text(Localization.getString("nav_scan", currentLanguage), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                     modifier = Modifier.testTag("nav_tab_scan"),
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
 
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Landscape, contentDescription = "Crops") },
-                    label = { Text(Localization.getString("nav_crops", currentLanguage), fontSize = 10.sp) },
-                    modifier = Modifier.testTag("nav_tab_crops"),
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
-                )
-
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.ShowChart, contentDescription = "ML Yield") },
-                    label = { Text(Localization.getString("nav_yield", currentLanguage), fontSize = 10.sp) },
-                    modifier = Modifier.testTag("nav_tab_yield"),
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
-                )
-
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    icon = { Icon(Icons.Default.Forum, contentDescription = "Forum") },
-                    label = { Text(Localization.getString("nav_forum", currentLanguage), fontSize = 10.sp) },
-                    modifier = Modifier.testTag("nav_tab_forum"),
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
-                )
-
+                // Tab 5: AI Chat
                 NavigationBarItem(
                     selected = selectedTab == 5,
                     onClick = { selectedTab = 5 },
-                    icon = { Icon(Icons.Default.Psychology, contentDescription = "AI Chat") },
-                    label = { Text(Localization.getString("nav_chat", currentLanguage), fontSize = 10.sp) },
+                    icon = { Icon(Icons.Default.Psychology, contentDescription = "Kisan AI Assistant Chat") },
+                    label = { Text(Localization.getString("nav_chat", currentLanguage), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                     modifier = Modifier.testTag("nav_tab_chat"),
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
 
+                // Tab 6: Market & Schemes
                 NavigationBarItem(
                     selected = selectedTab == 6,
                     onClick = { selectedTab = 6 },
-                    icon = { Icon(Icons.Default.Storefront, contentDescription = "Market") },
-                    label = { Text(Localization.getString("nav_market", currentLanguage), fontSize = 10.sp) },
+                    icon = { Icon(Icons.Default.Storefront, contentDescription = "Mandi Prices and Govt Schemes Tab") },
+                    label = { Text(Localization.getString("nav_market", currentLanguage), fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                     modifier = Modifier.testTag("nav_tab_market"),
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
 
+                // Tab 8: More (Fields, Yield, Forum, Calculators, Profile)
+                val isMoreActive = selectedTab !in listOf(0, 1, 5, 6)
                 NavigationBarItem(
-                    selected = selectedTab == 7,
-                    onClick = { selectedTab = 7 },
-                    icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
-                    label = { Text(Localization.getString("nav_profile", currentLanguage), fontSize = 10.sp) },
-                    modifier = Modifier.testTag("nav_tab_profile"),
+                    selected = isMoreActive,
+                    onClick = { showMoreSheet = true },
+                    icon = { Icon(Icons.Default.Apps, contentDescription = "More Agri Tools") },
+                    label = { Text("More", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                    modifier = Modifier.testTag("nav_tab_more"),
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = MaterialTheme.colorScheme.primary, indicatorColor = MaterialTheme.colorScheme.primaryContainer)
                 )
             }
@@ -280,6 +295,9 @@ fun HomeScreen(viewModel: AgriViewModel) {
                 5 -> AgriChatScreen(viewModel = viewModel)
                 6 -> MarketAndSchemesScreen(viewModel = viewModel)
                 7 -> UserProfileScreen(viewModel = viewModel)
+                8 -> WeatherScreen(viewModel = viewModel)
+                9 -> CalculatorsScreen(viewModel = viewModel)
+                else -> HomeDashboardScreen(viewModel = viewModel, onNavigateTab = { selectedTab = it })
             }
         }
     }

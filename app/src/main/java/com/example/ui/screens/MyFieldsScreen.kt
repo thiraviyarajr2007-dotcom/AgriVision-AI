@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.sp
 import com.example.data.local.CropProfileEntity
 import com.example.data.local.DiagnosisEntity
 import com.example.ui.AgriViewModel
+import com.example.ui.components.AgriEmptyState
+import com.example.ui.theme.AgriSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -141,23 +143,19 @@ fun ActiveFieldsList(
     onDelete: (Long) -> Unit
 ) {
     if (profiles.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Agriculture, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("No Farm Fields Added Yet", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
-                Text("Tap '+' button to add your paddy, tomato, or cotton plot.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-        }
+        AgriEmptyState(
+            icon = Icons.Default.Agriculture,
+            title = "No Active Crop Fields Saved",
+            description = "Register your paddy, tomato, or sugarcane plot to track real-time growth stages, soil health, and advisory schedules.",
+            actionLabel = "Add First Field Plot",
+            onActionClick = { /* Handled by FAB or open dialog */ }
+        )
     } else {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(AgriSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(AgriSpacing.md)
         ) {
             items(profiles) { profile ->
                 val daysOld = remember(profile.sowingDate) {
@@ -176,11 +174,11 @@ fun ActiveFieldsList(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(AgriSpacing.cardRadius),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(AgriSpacing.lg)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -189,25 +187,28 @@ fun ActiveFieldsList(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Box(
                                     modifier = Modifier
-                                        .size(40.dp)
+                                        .size(44.dp)
                                         .background(MaterialTheme.colorScheme.primaryContainer, shape = CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(Icons.Default.Landscape, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                                    Icon(Icons.Default.Landscape, contentDescription = "Crop Field Icon", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                                 }
-                                Spacer(modifier = Modifier.width(10.dp))
+                                Spacer(modifier = Modifier.width(AgriSpacing.md))
                                 Column {
                                     Text(profile.fieldName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                     Text("${profile.cropType} • ${profile.fieldAreaAcres} Acres • Soil: ${profile.soilType}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
                                 }
                             }
 
-                            IconButton(onClick = { onDelete(profile.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
+                            IconButton(
+                                onClick = { onDelete(profile.id) },
+                                modifier = Modifier.size(AgriSpacing.touchTargetMin)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete Field", tint = Color.Gray)
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(AgriSpacing.md))
 
                         // Growth Monitoring Section
                         Row(
@@ -215,11 +216,11 @@ fun ActiveFieldsList(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("Growth Stage: $growthStage", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                            Text("Age: $daysOld Days ($growthPercent%)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("Growth Stage: $growthStage", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                            Text("Age: $daysOld Days ($growthPercent%)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(AgriSpacing.xs))
 
                         // Growth Progress Bar
                         Box(
@@ -240,17 +241,17 @@ fun ActiveFieldsList(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(top = 4.dp),
+                                .padding(top = AgriSpacing.xs),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("Seedling", fontSize = 9.sp, color = Color.Gray)
-                            Text("Vegetative", fontSize = 9.sp, color = Color.Gray)
-                            Text("Flowering", fontSize = 9.sp, color = Color.Gray)
-                            Text("Fruiting", fontSize = 9.sp, color = Color.Gray)
-                            Text("Harvest", fontSize = 9.sp, color = Color.Gray)
+                            Text("Seedling", fontSize = 10.sp, color = Color.Gray)
+                            Text("Vegetative", fontSize = 10.sp, color = Color.Gray)
+                            Text("Flowering", fontSize = 10.sp, color = Color.Gray)
+                            Text("Fruiting", fontSize = 10.sp, color = Color.Gray)
+                            Text("Harvest", fontSize = 10.sp, color = Color.Gray)
                         }
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(AgriSpacing.md))
 
                         // Dashboard Status Badges Row
                         Row(
@@ -260,7 +261,7 @@ fun ActiveFieldsList(
                             Box(
                                 modifier = Modifier
                                     .background(MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = AgriSpacing.sm, vertical = AgriSpacing.xs)
                             ) {
                                 Text("Health: ${profile.healthScore}%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                             }
@@ -268,7 +269,7 @@ fun ActiveFieldsList(
                             Box(
                                 modifier = Modifier
                                     .background(MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = AgriSpacing.sm, vertical = AgriSpacing.xs)
                             ) {
                                 Text("Water: Optimal", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                             }
@@ -276,14 +277,14 @@ fun ActiveFieldsList(
                             Box(
                                 modifier = Modifier
                                     .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = AgriSpacing.sm, vertical = AgriSpacing.xs)
                             ) {
                                 Text("NPK: On Schedule", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                         }
 
                         if (profile.notes.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(AgriSpacing.sm))
                             Text("Notes: ${profile.notes}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         }
                     }
@@ -299,45 +300,42 @@ fun ScanHistoryList(
     onDelete: (Long) -> Unit
 ) {
     if (histories.isEmpty()) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-                Spacer(modifier = Modifier.height(12.dp))
-                Text("No Past Diagnoses Saved", style = MaterialTheme.typography.titleMedium, color = Color.Gray)
-                Text("Your leaf scans will be stored here automatically.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-        }
+        AgriEmptyState(
+            icon = Icons.Default.History,
+            title = "No Past Leaf Scans Stored",
+            description = "Whenever you analyze a crop leaf for diseases or pest symptoms, your diagnostic reports will be preserved here offline."
+        )
     } else {
         val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(AgriSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(AgriSpacing.md)
         ) {
             items(histories) { item ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(AgriSpacing.cardRadius),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(AgriSpacing.lg)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(item.cropName, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                Text(item.cropName, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                                 Text(item.diseaseName, style = MaterialTheme.typography.bodyMedium, color = if (item.isHealthy) Color(0xFF15803D) else Color(0xFFC62828), fontWeight = FontWeight.SemiBold)
                                 Text(dateFormat.format(Date(item.timestamp)), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             }
-                            IconButton(onClick = { onDelete(item.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
+                            IconButton(
+                                onClick = { onDelete(item.id) },
+                                modifier = Modifier.size(AgriSpacing.touchTargetMin)
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Delete Scan Record", tint = Color.Gray)
                             }
                         }
                     }

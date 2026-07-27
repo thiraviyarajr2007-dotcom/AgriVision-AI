@@ -172,6 +172,12 @@ fun CameraCapture(
 
             DisposableEffect(Unit) {
                 onDispose {
+                    try {
+                        val cameraProvider = ProcessCameraProvider.getInstance(context).get()
+                        cameraProvider.unbindAll()
+                    } catch (e: Exception) {
+                        Log.e("CameraCapture", "Error unbinding camera on dispose", e)
+                    }
                     cameraExecutor.shutdown()
                 }
             }

@@ -156,13 +156,21 @@ class CropRepository(
     suspend fun diagnoseCropImage(
         bitmap: Bitmap?,
         presetId: String?,
-        language: String
+        language: String,
+        soilType: String = "Red Loamy"
     ): Result<CropDiagnosisResult> = withContext(Dispatchers.IO) {
         // Check preset sample if image is not provided or if presetId is set
         if (presetId != null && bitmap == null) {
             val sample = CropPresetSamples.list.find { it.id == presetId }
             if (sample != null) {
-                return@withContext Result.success(sample.defaultResult.copy(language = language))
+                val enhancedSoilList = sample.defaultResult.soilImprovement.toMutableList()
+                if (enhancedSoilList.isEmpty() || enhancedSoilList.none { it.contains(soilType, ignoreCase = true) }) {
+                    enhancedSoilList.add(0, "Soil Type ($soilType) Optimization: Add organic matter & vermicompost to balance aeration and moisture retention.")
+                }
+                return@withContext Result.success(sample.defaultResult.copy(
+                    language = language,
+                    soilImprovement = enhancedSoilList
+                ))
             }
         }
 
@@ -170,6 +178,7 @@ class CropRepository(
         val systemInstructionText = """
             You are an expert AI Agricultural Specialist & Plant Pathologist.
             Analyze the provided crop image and user request.
+            DIAGNOSTIC SOIL CONTEXT: Field Soil Type is "$soilType". Factor in drainage speed, moisture retention, pH tendency, and pathogen persistence associated with $soilType soil when prescribing remedies, NPK schedule, irrigation, and soil health management.
             Return ONLY a valid JSON object matching the following structure without extra markdown or text.
             CRITICAL LANGUAGE REQUIREMENT: All string values in the JSON output MUST be strictly in $language language. Do NOT use English text unless $language is 'English'. Translate all crop names, symptoms, disease descriptions, remedies, NPK dosages, and warnings into $language.
             
@@ -335,9 +344,8 @@ class CropRepository(
             Log.w("CropRepository", "Fallback API (Gemini) failed: ${e.message}", e)
         }
 
-        // --- 3. LOCAL SAMPLE FALLBACK ---
-        val fallbackSample = CropPresetSamples.list.first()
-        Result.success(fallbackSample.defaultResult.copy(language = language))
+        // --- 3. DIAGNOSIS FAILURE ---
+        Result.failure(Exception("AI Diagnosis service failed to analyze leaf photo. Please ensure a stable network connection and try again with a clear leaf photo."))
     }
 
     suspend fun askAgriChatbot(

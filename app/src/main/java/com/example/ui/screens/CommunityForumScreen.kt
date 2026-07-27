@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.CommunityPostEntity
 import com.example.ui.AgriViewModel
+import com.example.ui.components.AgriEmptyState
+import com.example.ui.theme.AgriSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -224,33 +226,20 @@ fun CommunityForumScreen(
 
             // Forum Posts List
             if (filteredPosts.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.QuestionAnswer,
-                            contentDescription = null,
-                            tint = Color.Gray,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "No community questions found in this category.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.Gray
-                        )
-                    }
-                }
+                AgriEmptyState(
+                    icon = Icons.Default.QuestionAnswer,
+                    title = "No Questions in This Category",
+                    description = "Be the first Tamil Nadu farmer to ask a question or share a tip about $selectedCategory for $selectedCropFilter.",
+                    actionLabel = "Ask Community Now",
+                    onActionClick = { showNewPostDialog = true },
+                    modifier = Modifier.padding(AgriSpacing.lg)
+                )
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(horizontal = AgriSpacing.lg),
+                    verticalArrangement = Arrangement.spacedBy(AgriSpacing.md)
                 ) {
                     items(filteredPosts, key = { it.id }) { post ->
                         CommunityPostCard(

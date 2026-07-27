@@ -19,6 +19,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+import com.example.data.WeatherRepository
+import com.example.data.model.HyperLocalWeatherData
+import com.example.data.model.WeatherLocation
+import com.example.util.AutoDetectedLocation
+import com.example.util.DeviceLocationService
+
 sealed class DiagnosisUiState {
     object Idle : DiagnosisUiState()
     data class Loading(val progressMessage: String) : DiagnosisUiState()
@@ -43,13 +49,13 @@ data class FertilizerCalculationResult(
 )
 
 data class FarmerUserProfile(
-    val name: String = "Ramesh Kumar",
-    val phone: String = "+91 98765 43210",
+    val name: String = "Farmer User",
+    val phone: String = "",
     val location: String = "Coimbatore, Tamil Nadu",
     val primarySoilType: String = "Red Loamy Soil",
-    val totalLandAcres: Double = 3.5,
-    val pastCropHistory: String = "Paddy (Kharif 2024), Groundnut (Rabi 2024)",
-    val loginMode: String = "Google Account"
+    val totalLandAcres: Double = 0.0,
+    val pastCropHistory: String = "",
+    val loginMode: String = "Guest"
 )
 
 data class AdvancedYieldPredictionResult(
@@ -102,7 +108,39 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    // --- Weather API & Hyper-local Climate State ---
+    private val weatherRepository = WeatherRepository()
+    val availableWeatherLocations: List<WeatherLocation> = weatherRepository.presetLocations
+
+    private val _selectedWeatherLocation = MutableStateFlow(weatherRepository.presetLocations.first())
+    val selectedWeatherLocation: StateFlow<WeatherLocation> = _selectedWeatherLocation.asStateFlow()
+
+    private val _weatherData = MutableStateFlow<HyperLocalWeatherData?>(null)
+    val weatherData: StateFlow<HyperLocalWeatherData?> = _weatherData.asStateFlow()
+
+    private val _isWeatherLoading = MutableStateFlow(false)
+    val isWeatherLoading: StateFlow<Boolean> = _isWeatherLoading.asStateFlow()
+
+    fun selectWeatherLocation(location: WeatherLocation) {
+        _selectedWeatherLocation.value = location
+        refreshWeatherForSelectedLocation()
+    }
+
+    fun refreshWeatherForSelectedLocation() {
+        viewModelScope.launch {
+            _isWeatherLoading.value = true
+            val data = weatherRepository.fetchWeatherForLocation(_selectedWeatherLocation.value)
+            _weatherData.value = data
+            _isWeatherLoading.value = false
+        }
+    }
+
     private val prefs = application.getSharedPreferences("agri_app_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _hasCompletedOnboarding = MutableStateFlow(
+        prefs.getBoolean("has_completed_onboarding", false)
+    )
+    val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
 
     private val _hasCompletedLanguageSetup = MutableStateFlow(
         prefs.getBoolean("has_completed_language_setup", false)
@@ -112,11 +150,138 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
     private val _userProfile = MutableStateFlow(FarmerUserProfile())
     val userProfile: StateFlow<FarmerUserProfile> = _userProfile.asStateFlow()
 
+    // --- Device Location Auto-Detection State ---
+    private val _autoDetectedLocation = MutableStateFlow<AutoDetectedLocation?>(null)
+    val autoDetectedLocation: StateFlow<AutoDetectedLocation?> = _autoDetectedLocation.asStateFlow()
+
+    fun detectAndApplyDeviceLocation(context: android.content.Context) {
+        viewModelScope.launch {
+            val detected = DeviceLocationService.detectDeviceLocation(context)
+            applyDetectedLocation(detected)
+        }
+    }
+
+    fun applyDetectedLocation(detected: AutoDetectedLocation) {
+        _autoDetectedLocation.value = detected
+        
+        // Auto-update profile location label
+        _userProfile.value = _userProfile.value.copy(
+            location = detected.fullLocationLabel
+        )
+
+        // Auto-update language/dialect without requiring manual selection
+        selectLanguage(detected.detectedLanguage)
+
+        // Auto-match weather location preset
+        val matchedWeatherLoc = availableWeatherLocations.find { 
+            it.name.contains(detected.cityName, ignoreCase = true) || 
+            it.state.contains(detected.stateName, ignoreCase = true)
+        } ?: if (detected.isKarnataka) {
+            availableWeatherLocations.find { it.state.contains("Karnataka", ignoreCase = true) }
+        } else {
+            availableWeatherLocations.first()
+        }
+
+        matchedWeatherLoc?.let { selectWeatherLocation(it) }
+    }
+
+    fun simulateRegionToggle(targetState: String) {
+        val simulated = if (targetState.contains("Karnataka", ignoreCase = true) || targetState.contains("Kanada", ignoreCase = true)) {
+            DeviceLocationService.buildLocationResult("Bengaluru", "Karnataka", 12.9716, 77.5946)
+        } else {
+            DeviceLocationService.buildLocationResult("Coimbatore", "Tamil Nadu", 11.0168, 76.9558)
+        }
+        applyDetectedLocation(simulated)
+    }
+
     private val _isLoggedIn = MutableStateFlow(true)
     val isLoggedIn: StateFlow<Boolean> = _isLoggedIn.asStateFlow()
 
     private val _showSplashScreen = MutableStateFlow(true)
     val showSplashScreen: StateFlow<Boolean> = _showSplashScreen.asStateFlow()
+
+    // --- Retention & Gamification Flow ---
+    private val _farmHealthStreakDays = MutableStateFlow(14)
+    val farmHealthStreakDays: StateFlow<Int> = _farmHealthStreakDays.asStateFlow()
+
+    private val _earnedBadges = MutableStateFlow(
+        listOf("Early Leaf Scout", "Organic Defender", "7-Day Scanner", "Soil Master")
+    )
+    val earnedBadges: StateFlow<List<String>> = _earnedBadges.asStateFlow()
+
+    private val _scanNudgeAlert = MutableStateFlow<String?>(
+        "Your Tomato Plot (Field #2) hasn't been scanned in 7 days. Snap a leaf photo to maintain your 14-day streak!"
+    )
+    val scanNudgeAlert: StateFlow<String?> = _scanNudgeAlert.asStateFlow()
+
+    fun dismissNudgeAlert() {
+        _scanNudgeAlert.value = null
+    }
+
+    // --- Offline-First Flow ---
+    private val _isOfflineMode = MutableStateFlow(false)
+    val isOfflineMode: StateFlow<Boolean> = _isOfflineMode.asStateFlow()
+
+    private val _offlineScanQueueCount = MutableStateFlow(0)
+    val offlineScanQueueCount: StateFlow<Int> = _offlineScanQueueCount.asStateFlow()
+
+    fun toggleOfflineSimulation(isOffline: Boolean) {
+        _isOfflineMode.value = isOffline
+    }
+
+    fun queueOfflineScan(cropName: String) {
+        _offlineScanQueueCount.value += 1
+    }
+
+    fun syncOfflineQueue() {
+        viewModelScope.launch {
+            if (_offlineScanQueueCount.value > 0) {
+                kotlinx.coroutines.delay(1000)
+                _offlineScanQueueCount.value = 0
+            }
+        }
+    }
+
+    // --- Accessibility & Low-Literacy Voice Flow ---
+    private val _isVoiceModalOpen = MutableStateFlow(false)
+    val isVoiceModalOpen: StateFlow<Boolean> = _isVoiceModalOpen.asStateFlow()
+
+    private val _voiceRecognizedText = MutableStateFlow<String?>(null)
+    val voiceRecognizedText: StateFlow<String?> = _voiceRecognizedText.asStateFlow()
+
+    fun openVoiceAssistant() {
+        _isVoiceModalOpen.value = true
+        _voiceRecognizedText.value = null
+    }
+
+    fun closeVoiceAssistant() {
+        _isVoiceModalOpen.value = false
+        _voiceRecognizedText.value = null
+    }
+
+    fun processSpokenTamilQuery(spokenText: String, onNavigateTab: (Int) -> Unit) {
+        _voiceRecognizedText.value = spokenText
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(1200)
+            _isVoiceModalOpen.value = false
+            when {
+                spokenText.contains("தக்காளி", ignoreCase = true) || spokenText.contains("இலை", ignoreCase = true) || spokenText.contains("புள்ளி", ignoreCase = true) || spokenText.contains("scan", ignoreCase = true) || spokenText.contains("disease", ignoreCase = true) -> {
+                    resetDiagnosis()
+                    onNavigateTab(1) // Tab 1 = Diagnosis Screen
+                }
+                spokenText.contains("உரம்", ignoreCase = true) || spokenText.contains("fertilizer", ignoreCase = true) || spokenText.contains("yield", ignoreCase = true) -> {
+                    onNavigateTab(9) // Tab 9 = Calculators / Fertilizer Screen
+                }
+                spokenText.contains("விலை", ignoreCase = true) || spokenText.contains("mandi", ignoreCase = true) || spokenText.contains("market", ignoreCase = true) -> {
+                    onNavigateTab(6) // Tab 6 = Mandi Prices & Schemes
+                }
+                else -> {
+                    sendChatMessage("Voice query from farmer: $spokenText. Please give simple Tamil crop advice.")
+                    onNavigateTab(5) // Tab 5 = AgriChat Screen
+                }
+            }
+        }
+    }
 
     fun dismissSplash() {
         _showSplashScreen.value = false
@@ -155,47 +320,8 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Seed default community posts & sample soil test if empty
-        viewModelScope.launch {
-            kotlinx.coroutines.delay(1000)
-            if (allCommunityPosts.value.isEmpty()) {
-                repository.saveCommunityPost(
-                    authorName = "Murugan V.",
-                    authorRegion = "Thanjavur, Tamil Nadu",
-                    cropType = "Paddy / Rice",
-                    category = "Pest Control",
-                    title = "How to control Leaf Folder in organic paddy fields?",
-                    content = "Facing leaf folder caterpillars after recent monsoon rain. Sprayed Panchagavya solution and released Trichogramma egg parasitoids. Has anyone tried Neem Oil + Garlic extract?"
-                )
-                repository.saveCommunityPost(
-                    authorName = "Priya Sharma",
-                    authorRegion = "Karnal, Haryana",
-                    cropType = "Tomato",
-                    category = "Soil & Fertilizer",
-                    title = "Best organic mix for Early Blight prevention",
-                    content = "Sharing my experience: Adding Vermicompost + Trichoderma viride directly to root zone reduced tomato blight occurrence by 80% this season."
-                )
-                repository.saveCommunityPost(
-                    authorName = "Rajesh Patel",
-                    authorRegion = "Rajkot, Gujarat",
-                    cropType = "Cotton",
-                    category = "Irrigation",
-                    title = "Drip irrigation timing during flowering stage",
-                    content = "What is the ideal water frequency for cotton under high summer heat? Currently running 2 hours alternate days with liquid bio-fertilizers."
-                )
-            }
-            if (allSoilTests.value.isEmpty()) {
-                repository.saveSoilTest(
-                    farmName = "Main Field - South Block",
-                    soilType = "Red Loamy",
-                    phLevel = 6.8,
-                    nitrogenRating = "Medium (280 kg/ha)",
-                    phosphorusRating = "High (42 kg/ha)",
-                    potassiumRating = "Medium (190 kg/ha)",
-                    organicCarbon = 0.65
-                )
-            }
-        }
+        // Fetch hyper-local weather forecast on launch
+        refreshWeatherForSelectedLocation()
     }
 
     fun createCommunityPost(
@@ -345,8 +471,17 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedImageBitmap = MutableStateFlow<Bitmap?>(null)
     val selectedImageBitmap: StateFlow<Bitmap?> = _selectedImageBitmap.asStateFlow()
 
-    private val _selectedPresetId = MutableStateFlow<String?>("rice_blast")
+    private val _selectedPresetId = MutableStateFlow<String?>(null)
     val selectedPresetId: StateFlow<String?> = _selectedPresetId.asStateFlow()
+
+    private val _selectedSoilTypeForDiagnosis = MutableStateFlow("Red Loamy")
+    val selectedSoilTypeForDiagnosis: StateFlow<String> = _selectedSoilTypeForDiagnosis.asStateFlow()
+
+    fun setSelectedSoilTypeForDiagnosis(soilType: String) {
+        if (soilType.isNotBlank()) {
+            _selectedSoilTypeForDiagnosis.value = soilType
+        }
+    }
 
     private val _diagnosisState = MutableStateFlow<DiagnosisUiState>(DiagnosisUiState.Idle)
     val diagnosisState: StateFlow<DiagnosisUiState> = _diagnosisState.asStateFlow()
@@ -369,6 +504,16 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("selected_language", language).apply()
     }
 
+    fun completeOnboarding() {
+        prefs.edit().putBoolean("has_completed_onboarding", true).apply()
+        _hasCompletedOnboarding.value = true
+    }
+
+    fun resetOnboarding() {
+        prefs.edit().putBoolean("has_completed_onboarding", false).apply()
+        _hasCompletedOnboarding.value = false
+    }
+
     fun completeLanguageSetup(language: String) {
         selectLanguage(language)
         prefs.edit().putBoolean("has_completed_language_setup", true).apply()
@@ -378,6 +523,13 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
     fun resetLanguageSetup() {
         prefs.edit().putBoolean("has_completed_language_setup", false).apply()
         _hasCompletedLanguageSetup.value = false
+    }
+
+    fun resetDiagnosis() {
+        _diagnosisState.value = DiagnosisUiState.Idle
+        _selectedImageUri.value = null
+        _selectedImageBitmap.value = null
+        _selectedPresetId.value = null
     }
 
     fun selectPresetSample(presetId: String) {
@@ -411,18 +563,19 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
     fun runCropDiagnosis() {
         viewModelScope.launch {
             val lang = _selectedLanguage.value
+            val soilType = _selectedSoilTypeForDiagnosis.value
             _diagnosisState.value = DiagnosisUiState.Loading("🔍 Scanning leaf anatomy & spot patterns...")
             
             kotlinx.coroutines.delay(600)
             _diagnosisState.value = DiagnosisUiState.Loading("🦠 Identifying crop species & pathogen symptoms...")
             
             kotlinx.coroutines.delay(600)
-            _diagnosisState.value = DiagnosisUiState.Loading("🌿 Formulating organic remedies & precision NPK plan...")
+            _diagnosisState.value = DiagnosisUiState.Loading("🌿 Evaluating $soilType soil impact & precision NPK plan...")
 
             val bitmap = _selectedImageBitmap.value
             val presetId = _selectedPresetId.value
 
-            val result = repository.diagnoseCropImage(bitmap, presetId, lang)
+            val result = repository.diagnoseCropImage(bitmap, presetId, lang, soilType)
             result.fold(
                 onSuccess = { diagResult ->
                     // Auto-save diagnosis to history
@@ -439,9 +592,7 @@ class AgriViewModel(application: Application) : AndroidViewModel(application) {
                     _diagnosisState.value = DiagnosisUiState.Success(diagResult, savedId)
                 },
                 onFailure = { err ->
-                    // Fallback to sample if error
-                    val sample = CropPresetSamples.list.first()
-                    _diagnosisState.value = DiagnosisUiState.Success(sample.defaultResult.copy(language = lang))
+                    _diagnosisState.value = DiagnosisUiState.Error(err.message ?: "Diagnosis failed. Please try again with a clearer crop photo or check network connection.")
                 }
             )
         }
